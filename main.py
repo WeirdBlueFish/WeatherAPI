@@ -1,12 +1,14 @@
 #________________
 # imports:
 
+from fastapi import FastAPI, HTTPException, Query
 import httpx
 import asyncio
-import time
 
 #________________
 # Base Setting:
+
+app = FastAPI(title="Farbod Weather API", description="Using api to find any city weather data!")
 
 API_KEY = "df119a38915d672fd0c7e3a635cd828f"
 BASE_URL = "https://api.openweathermap.org/data/2.5/weather"
@@ -28,41 +30,40 @@ async def fetch_weather(client, city):
         response.raise_for_status()
 
         data = response.json()
-
-        temp = data['main']['temp']
-        describtion = data['weather'][0]['description']
-        humidity = data['main']['humidity'] 
         
-        print(f"{city} weather status:\n")
-        print(f"Tempeture: {temp}C")
-        print(f"Describtion: {describtion}")
-        print(f"Humidity: {humidity}")
-        print(f"_"*10, end='\n')
+        return {
+            "city": city.capitalize(),
+            "temp": data['main']['temp'],
+            "describtion": data['weather'][0]['description'],
+            "humidity": data['main']['humidity'],
+            "status": "success"
+        }
 
 
     except httpx.HTTPError as e:
-        print(f"❌ HTTP Error: {e.response.status_code}")
+        return {"city": city, "status": "failed", "error": "City not found or invalid API key."}
 
     except httpx.RequestError as e:
-        print(f"❌ Network Error: {e}")
+        return {"city": city, "status": "failed", "error": "Network connection error."}
 
-    except KeyError:
-        print(f"❌ Error parsing the JSON data. Unexpected response format.")
 
-async def main():
-    cities = ["Ahvaz", "Tehran", "London", "Tokyo", "New York", "Paris"]
+#_______________________
+# Run App:
 
-    print("🚀 Fetching weather data concurrently...\n")
-    start = time.time()
+@app.get("/weather/{city}")
+async def get_single_city_weather(city: str):
+    async with httpx.AsyncClient() as client:
+        result = await fetch_weather(client, city)
+        if result["status"] == "failed":
+            raise HTTPException(status_code=404, detail=result["error"])
+        return result
+
+@app.get("/weather/bulk/")
+async def get_bulk_weather(cities: str = Query(..., description="Enter cities name by comma ','")):
+    city_list = [c.strip() for c in cities.split(",")]
 
     async with httpx.AsyncClient(timeout=10.0) as client:
-        tasks = [fetch_weather(client, city) for city in cities]
+        tasks = [fetch_weather(client, city) for city in city_list]
+        results = await asyncio.gather(*tasks)
 
-        await asyncio.gather(*tasks)
-
-    end = time.time()
-    print(f"\n⏱️ Total time taken: {end - start:.2f} seconds")
-
-if __name__ == "__main__":
-
-    asyncio.run(main())
+    return {"total_cities": len(city_list), "data": results}
