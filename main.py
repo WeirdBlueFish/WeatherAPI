@@ -2,21 +2,28 @@
 # imports:
 
 import httpx
+import asyncio
+import time
 
 #________________
 # Base Setting:
 
 API_KEY = "df119a38915d672fd0c7e3a635cd828f"
+BASE_URL = "https://api.openweathermap.org/data/2.5/weather"
 
 #________________
 # Base:
 
-def get_city_weather(city):
+async def fetch_weather(client, city):
+    params = {
+        "q":city,
+        "appid":API_KEY,
+        "units":"metrics" 
+    }
+
     try:
 
-        BASE_URL = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={API_KEY}&units=metric"
-
-        response = httpx.get(BASE_URL)
+        response = await client.get(BASE_URL, params=params)
 
         response.raise_for_status()
 
@@ -30,6 +37,7 @@ def get_city_weather(city):
         print(f"Tempeture: {temp}C")
         print(f"Describtion: {describtion}")
         print(f"Humidity: {humidity}")
+        print(f"_"*10, end='\n')
 
 
     except httpx.HTTPError as e:
@@ -41,8 +49,20 @@ def get_city_weather(city):
     except KeyError:
         print(f"❌ Error parsing the JSON data. Unexpected response format.")
 
-city = "Ahvaz"
+async def main():
+    cities = ["Ahvaz", "Tehran", "London", "Tokyo", "New York", "Paris"]
+
+    print("🚀 Fetching weather data concurrently...\n")
+    start = time.time()
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        tasks = [fetch_weather(client, city) for city in cities]
+
+        await asyncio.gather(*tasks)
+
+    end = time.time()
+    print(f"\n⏱️ Total time taken: {end - start:.2f} seconds")
 
 if __name__ == "__main__":
-    get_city_weather(city=city)
-    
+
+    asyncio.run(main())
